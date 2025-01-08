@@ -84,6 +84,17 @@ impl Default for Config {
                 ),
                 (
                     XrAction {
+                        name: "left_pose".to_string(),
+                        pretty_name: "Left Hand Grip Pose".to_string(),
+                        action_type: XrActionType::Pose,
+                    },
+                    XrBinding {
+                        interaction_profile: "/interaction_profiles/oculus/touch_controller".into(),
+                        binding: vec!["/user/hand/left/input/grip/pose".into()],
+                    },
+                ),
+                (
+                    XrAction {
                         name: "right_squeeze".to_string(),
                         pretty_name: "Right Hand Squeeze".to_string(),
                         action_type: XrActionType::Float,
@@ -91,6 +102,17 @@ impl Default for Config {
                     XrBinding {
                         interaction_profile: "/interaction_profiles/oculus/touch_controller".into(),
                         binding: vec!["/user/hand/right/input/squeeze/value".into()],
+                    },
+                ),
+                (
+                    XrAction {
+                        name: "left_squeeze".to_string(),
+                        pretty_name: "Left Hand Squeeze".to_string(),
+                        action_type: XrActionType::Float,
+                    },
+                    XrBinding {
+                        interaction_profile: "/interaction_profiles/oculus/touch_controller".into(),
+                        binding: vec!["/user/hand/left/input/squeeze/value".into()],
                     },
                 ),
             ],
@@ -261,8 +283,10 @@ pub fn update_spaces(
     for (space_transform, space_action, space_velocity) in space_query.iter_mut() {
         // if let Ok(space) = space_transform {
         for (mut transform, action, mut velocity, entity) in tracked_space_query.iter_mut() {
-            *transform = *space_transform;
-            *velocity = *space_velocity;
+            if action == space_action {
+                *transform = *space_transform;
+                *velocity = *space_velocity;
+            }
             // if action.is_none() {
             // cmds.entity(entity).insert(space_action.clone());
             // }

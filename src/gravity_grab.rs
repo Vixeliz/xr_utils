@@ -47,7 +47,7 @@ pub(crate) fn gravity_grabbing(
     config: Res<XrUtilsConfig>,
     inputs: Option<Res<XrInput>>,
 ) {
-    if let Ok((hand_transform, velocity)) = hand_query.get_single() {
+    if let Some((hand_transform, velocity)) = hand_query.iter().next() {
         if let Ok((mut obj_velocity, obj_transform, entity)) = gravity_query.get_single_mut() {
             let (action_name, action_type) = config.gravity_grab_action_names.first().unwrap();
             if let Some(input) = inputs {
@@ -103,7 +103,7 @@ pub(crate) fn gesture(
     if gravity_grabbing.get_single().is_ok() {
         return;
     }
-    if let Ok((hand_transform, velocity)) = hand_query.get_single() {
+    if let Some((hand_transform, velocity)) = hand_query.iter().next() {
         if let Some(hit) = rapier_context.get_single().unwrap().cast_shape(
             hand_transform.translation,
             Quat::IDENTITY,

@@ -38,7 +38,7 @@ pub(crate) fn grab(
     rapier_context: Query<&RapierContext>,
     config: Res<XrUtilsConfig>,
 ) {
-    if let Ok((hand_transform, velocity, hand_entity)) = hand_query.get_single() {
+    if let Some((hand_transform, velocity, hand_entity)) = hand_query.iter().next() {
         let (action_name, action_type) = config.grab_action_names.first().unwrap();
         if let Some(input) = inputs {
             let input = input
@@ -48,6 +48,7 @@ pub(crate) fn grab(
             if let Ok((mut linear_vel, mut transform, aabb, entity)) =
                 holding_query.get_single_mut()
             {
+                println!("{:?}", input.cur_val);
                 if input.cur_val <= 0.0 {
                     let translation = hand_transform.translation
                         - Vec3::new(aabb.half_extents.x, 0.0, aabb.half_extents.z)
