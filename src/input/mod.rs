@@ -8,9 +8,15 @@ use actions::{
 use bevy::prelude::*;
 use bevy_mod_openxr::{
     action_binding::OxrSendActionBindings, action_set_syncing::OxrActionSetSyncSet,
-    openxr_session_running, session::OxrSession, spaces::OxrSpaceSyncSet,
+    openxr_session_available, openxr_session_running, session::OxrSession, spaces::OxrSpaceSyncSet,
 };
-use bevy_mod_xr::session::{session_available, XrSessionCreated};
+use bevy_mod_xr::session::{session_available, session_running, XrSessionCreated};
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy, SystemSet)]
+pub enum XrSystemSet {
+    Init,
+    Update,
+}
 
 pub struct OpenXRPlugin;
 
@@ -18,6 +24,11 @@ impl Plugin for OpenXRPlugin {
     fn build(&self, app: &mut App) {
         // app.add_systems(XrSessionCreated, spawn_hands);
         app.insert_resource(Config::default());
+        app.configure_sets(Startup, XrSystemSet::Init.run_if(openxr_session_available));
+        app.configure_sets(
+            PreUpdate,
+            XrSystemSet::Update.run_if(openxr_session_running),
+        );
         app.add_systems(XrSessionCreated, attach_set);
         app.add_systems(
             PreUpdate,
@@ -53,19 +64,17 @@ impl Plugin for OpenXRPlugin {
             create_actions
                 .before(create_input)
                 .run_if(session_available),
-        ); // app.add_plugins(TrackingUtilitiesPlugin);
-           // app.add_systems(
-           //     Startup,
-           //     create_input.after(create_actions).run_if(session_available),
-           // ); // app.add_plugins(TrackingUtilitiesPlugin);
+        );
         app.add_systems(
-            PostUpdate,
-            create_input.run_if(run_if_no_input).after(attach_set),
+            PreUpdate,
+            create_input
+                .in_set(XrSystemSet::Init)
+                .run_if(session_running)
+                .run_if(run_if_no_input),
         );
         app.add_systems(PreUpdate, update_spaces.after(OxrSpaceSyncSet));
-        app.add_systems(PreUpdate, update_inputs);
-        app.add_systems(PostUpdate, end_frame_input);
-        // app.add_systems(PreUpdate, update_right_grip.after(OxrSpaceSyncSet));
+        app.add_systems(PreUpdate, update_inputs.in_set(XrSystemSet::Update));
+        app.add_systems(PostUpdate, end_frame_input.in_set(XrSystemSet::Update));
     }
 }
 
