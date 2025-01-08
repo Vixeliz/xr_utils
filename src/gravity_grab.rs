@@ -1,7 +1,8 @@
 use bevy::prelude::*;
+use bevy_mod_xr::spaces::XrVelocity;
 use bevy_rapier3d::prelude::*;
 
-use crate::prelude::*;
+use crate::{prelude::*, XrUtilsConfig};
 
 #[derive(Component)]
 /// Keep track of what entity we are currently gravity grabbing
@@ -38,54 +39,63 @@ pub(crate) fn gravity_grabbing(
         (
             With<GravityGrabbing>,
             Without<Holding>,
-            Without<XrTrackedRightGrip>,
+            Without<XrTrackedSpace>,
         ),
     >,
-    hand_query: Query<(&Transform, &XrVelocity), (With<XrTrackedRightGrip>, Without<Holding>)>,
+    hand_query: Query<(&Transform, &XrVelocity), (With<XrTrackedSpace>, Without<Holding>)>,
     mut commands: Commands,
-    just_pressed: Res<JustPressedGrip>,
+    config: Res<XrUtilsConfig>,
+    inputs: Option<Res<XrInput>>,
 ) {
     if let Ok((hand_transform, velocity)) = hand_query.get_single() {
         if let Ok((mut obj_velocity, obj_transform, entity)) = gravity_query.get_single_mut() {
-            if just_pressed.cur_val > 0.0 {
-                // Pick object with hand vel
-                obj_velocity.linvel = velocity.linear;
-                let threshold = 0.5;
+            let (action_name, action_type) = config.gravity_grab_action_names.first().unwrap();
+            if let Some(input) = inputs {
+                let input = input
+                    .float_state
+                    .get(&XrAction::from_string(action_name, action_type))
+                    .unwrap();
+                if input.cur_val > 0.0 {
+                    // Pick object with hand vel
+                    obj_velocity.linvel = velocity.linear;
+                    let threshold = 0.5;
 
-                // If we move to fast gravity grab
-                let magnitude = obj_velocity.linvel.length();
-                if magnitude > threshold {
-                    let vel = compute_velocity(*hand_transform, *obj_transform);
-                    obj_velocity.linvel = vel;
+                    // If we move to fast gravity grab
+                    let magnitude = obj_velocity.linvel.length();
+                    if magnitude > threshold {
+                        let vel = compute_velocity(*hand_transform, *obj_transform);
+                        obj_velocity.linvel = vel;
 
-                    commands.entity(entity).remove::<GravityGrabbing>();
+                        commands.entity(entity).remove::<GravityGrabbing>();
+                    }
+                    return;
                 }
-                return;
-            }
 
-            commands.entity(entity).remove::<GravityGrabbing>();
+                commands.entity(entity).remove::<GravityGrabbing>();
+            }
         }
     }
 }
 // How we actuallly target entities
 // TODO: make some stuff like max distance a resource for the plugin config
 pub(crate) fn gesture(
-    just_pressed: Res<JustPressedGrip>,
     mut commands: Commands,
-    hand_query: Query<(&Transform, &XrVelocity), (With<XrTrackedRightGrip>, Without<Holding>)>,
+    hand_query: Query<(&Transform, &XrVelocity), (With<XrTrackedSpace>, Without<Holding>)>,
     mut gravity_query: Query<
         (
             &mut Velocity,
             &mut Transform,
             &mut MeshMaterial3d<StandardMaterial>,
-            &Grabbable,
+            // &Grabbable,
         ),
-        (Without<Holding>, Without<XrTrackedRightGrip>),
+        (Without<Holding>, Without<XrTrackedSpace>, With<Grabbable>),
     >,
     holding_query: Query<&Holding>,
     gravity_grabbing: Query<&GravityGrabbing>,
     rapier_context: Query<&RapierContext>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    config: Res<XrUtilsConfig>,
+    inputs: Option<Res<XrInput>>,
 ) {
     if holding_query.get_single().is_ok() {
         return;
@@ -107,23 +117,28 @@ pub(crate) fn gesture(
             },
             QueryFilter::only_dynamic(),
         ) {
-            if let Ok((mut obj_velocity, transform, material, grabbable)) =
-                gravity_query.get_mut(hit.0)
-            {
-                if **grabbable {
-                    let distance = hand_transform
-                        .translation
-                        .distance_squared(transform.translation);
-                    if distance <= 5.0 {
-                        // So we can get whatever we are currently targetting
-                        commands.entity(hit.0).insert(Targetting);
+            if let Ok((mut obj_velocity, transform, material)) = gravity_query.get_mut(hit.0) {
+                // if **grabbable {
+                let distance = hand_transform
+                    .translation
+                    .distance_squared(transform.translation);
+                if distance <= 5.0 {
+                    // So we can get whatever we are currently targetting
+                    commands.entity(hit.0).insert(Targetting);
+                    let (action_name, action_type) = config.grab_action_names.first().unwrap();
+                    if let Some(input) = inputs {
+                        let input = input
+                            .float_state
+                            .get(&XrAction::from_string(action_name, action_type))
+                            .unwrap();
 
-                        if just_pressed.pressed {
+                        if input.pressed {
                             obj_velocity.linvel.y = velocity.linear.y;
                             commands.entity(hit.0).insert(GravityGrabbing);
                         }
                     }
                 }
+                // }
             }
         }
     }

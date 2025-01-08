@@ -3,7 +3,7 @@ use bevy_mod_openxr::{
     action_binding::OxrSuggestActionBinding,
     action_set_attaching::OxrAttachActionSet,
     action_set_syncing::OxrSyncActionSet,
-    helper_traits::{ToQuat, ToVec3},
+    helper_traits::{ToQuat, ToVec2, ToVec3},
     resources::{OxrFrameState, OxrInstance, Pipelined},
     session::OxrSession,
     spaces::OxrSpaceLocationFlags,
@@ -21,11 +21,23 @@ use serde::{Deserialize, Serialize};
 //     HashMap
 // }
 
-#[derive(Deserialize, Serialize, Eq, PartialEq, Clone, Component)]
+#[derive(Deserialize, Serialize, Clone, Component, Debug)]
 pub struct XrAction {
-    name: String,
-    pretty_name: String,
-    action_type: XrActionType,
+    pub name: String,
+    pub pretty_name: String,
+    pub action_type: XrActionType,
+}
+
+// FIX: THIS IS JANK like all my code
+impl XrAction {
+    /// Does not make a proper action should only be used for getting items from xractions
+    pub fn from_string(string: &String, action_type: &XrActionType) -> Self {
+        Self {
+            name: string.clone(),
+            pretty_name: string.clone(),
+            action_type: action_type.clone(),
+        }
+    }
 }
 
 impl std::hash::Hash for XrAction {
@@ -34,29 +46,72 @@ impl std::hash::Hash for XrAction {
     }
 }
 
+impl PartialEq for XrAction {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Eq for XrAction {}
+
 #[derive(Deserialize, Serialize, Clone)]
 pub struct XrBinding {
     interaction_profile: String,
     binding: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Resource)]
 pub struct Config {
     bindings: Vec<(XrAction, XrBinding)>,
     set_name: String,
     set_pretty_name: String,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            bindings: vec![
+                (
+                    XrAction {
+                        name: "right_pose".to_string(),
+                        pretty_name: "Right Hand Grip Pose".to_string(),
+                        action_type: XrActionType::Pose,
+                    },
+                    XrBinding {
+                        interaction_profile: "/interaction_profiles/oculus/touch_controller".into(),
+                        binding: vec!["/user/hand/right/input/grip/pose".into()],
+                    },
+                ),
+                (
+                    XrAction {
+                        name: "right_squeeze".to_string(),
+                        pretty_name: "Right Hand Squeeze".to_string(),
+                        action_type: XrActionType::Float,
+                    },
+                    XrBinding {
+                        interaction_profile: "/interaction_profiles/oculus/touch_controller".into(),
+                        binding: vec!["/user/hand/right/input/squeeze/value".into()],
+                    },
+                ),
+            ],
+            set_name: "mine".to_string(),
+            set_pretty_name: "My set".to_string(),
+        }
+    }
+}
+
 #[derive(Resource)]
 pub struct XrActions {
     set: openxr::ActionSet,
     actions: HashMap<XrAction, XrRawActionState>,
-    config: Config,
 }
 
-#[derive(Resource)]
+#[derive(Resource, Debug)]
 pub struct XrInput {
-    state: HashMap<XrAction, XrActionState>,
+    pub float_state: HashMap<XrAction, XrActionStateFloat>,
+    pub bool_state: HashMap<XrAction, XrActionStateBool>,
+    pub vec2_state: HashMap<XrAction, XrActionStateVec2>,
+    // pub state: HashMap<XrAction, XrActionState>,
 }
 
 #[derive(Component)]
@@ -75,7 +130,7 @@ pub struct XrTrackedView;
 pub struct XrSpace;
 
 #[derive(Component)]
-pub struct XrTrackedSpace(XrAction);
+pub struct XrTrackedSpace;
 
 pub fn spawn_tracking_rig(actions: Res<XrActions>, mut cmds: Commands, session: Res<OxrSession>) {
     //head
@@ -90,7 +145,7 @@ pub fn spawn_tracking_rig(actions: Res<XrActions>, mut cmds: Commands, session: 
         HeadXRSpace(head_space),
     ));
 
-    for action in actions.actions.iter().by_ref() {
+    for action in actions.actions.iter() {
         match action.1 {
             XrRawActionState::Pose(x) => {
                 let space = session
@@ -103,21 +158,114 @@ pub fn spawn_tracking_rig(actions: Res<XrActions>, mut cmds: Commands, session: 
     }
 }
 
+pub fn update_inputs(
+    mut inputs: Option<ResMut<XrInput>>,
+    actions: Option<Res<XrActions>>,
+    session: Option<Res<OxrSession>>,
+) {
+    if let Some(mut inputs) = inputs {
+        if let Some(session) = session {
+            if let Some(actions) = actions {
+                for action in actions.actions.iter() {
+                    match action.1 {
+                        XrRawActionState::Float(x) => {
+                            if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
+                                // println!("{:?}", action.0.clone());
+                                if let Some(prev_value) =
+                                    inputs.float_state.get_mut(&action.0.clone())
+                                {
+                                    prev_value.pressed = prev_value.previous_val <= 0.0
+                                        && action_new.current_state > 0.0;
+                                    prev_value.cur_val = action_new.current_state;
+                                }
+                            }
+                        }
+                        XrRawActionState::Bool(x) => {
+                            if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
+                                if let Some(prev_value) =
+                                    inputs.bool_state.get_mut(&action.0.clone())
+                                {
+                                    prev_value.pressed =
+                                        !prev_value.previous_val && action_new.current_state;
+                                    prev_value.cur_val = action_new.current_state;
+                                }
+                            }
+                        }
+                        XrRawActionState::Vec2(x) => {
+                            if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
+                                if let Some(prev_value) =
+                                    inputs.vec2_state.get_mut(&action.0.clone())
+                                {
+                                    prev_value.cur_val = action_new.current_state.to_vec2();
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn end_frame_input(mut inputs: Option<ResMut<XrInput>>) {
+    if let Some(mut inputs) = inputs {
+        for float_input in inputs.float_state.iter_mut() {
+            float_input.1.previous_val = float_input.1.cur_val;
+        }
+        for bool_input in inputs.bool_state.iter_mut() {
+            bool_input.1.previous_val = bool_input.1.cur_val;
+        }
+        for vec2_input in inputs.vec2_state.iter_mut() {
+            vec2_input.1.previous_val = vec2_input.1.cur_val;
+        }
+    }
+    // for mut input in inputs.state.iter_mut() {
+    //     match input.1 {
+    //         XrActionState::Float {
+    //             previous_val,
+    //             cur_val,
+    //             pressed,
+    //         } => {
+    //             previous_val = cur_val;
+    //         }
+    //         XrActionState::Bool {
+    //             previous_val,
+    //             cur_val,
+    //             pressed,
+    //         } => {
+    //             previous_val = cur_val;
+    //         }
+    //         XrActionState::Vec2 {
+    //             previous_val,
+    //             cur_val,
+    //         } => {
+    //             previous_val = cur_val;
+    //         }
+    //         _ => {}
+    //     }
+    // }
+}
+
 pub fn update_spaces(
-    mut space_query: Query<(&mut Transform, &XrAction), (With<XrSpace>, Without<XrTrackedSpace>)>,
+    mut space_query: Query<
+        (&mut Transform, &XrAction, &XrVelocity),
+        (With<XrSpace>, Without<XrTrackedSpace>),
+    >,
     mut tracked_space_query: Query<
-        (&mut Transform, Option<&XrAction>, Entity),
+        (&mut Transform, &XrAction, &mut XrVelocity, Entity),
         (With<XrTrackedSpace>, Without<XrSpace>),
     >,
     mut cmds: Commands,
 ) {
-    for (space_transform, space_action) in space_query.iter_mut() {
+    for (space_transform, space_action, space_velocity) in space_query.iter_mut() {
         // if let Ok(space) = space_transform {
-        for (mut transform, action, entity) in &mut tracked_space_query {
+        for (mut transform, action, mut velocity, entity) in tracked_space_query.iter_mut() {
             *transform = *space_transform;
-            if action.is_none() {
-                cmds.entity(entity).insert(space_action.clone());
-            }
+            *velocity = *space_velocity;
+            // if action.is_none() {
+            // cmds.entity(entity).insert(space_action.clone());
+            // }
         }
         // }
     }
@@ -129,7 +277,7 @@ pub fn update_stage(
     mut stage_query: Query<&mut Transform, (With<XrTrackedStage>, Without<XrTrackingRoot>)>,
 ) {
     if let Ok(root) = root_query.get_single() {
-        for mut transform in &mut stage_query {
+        for mut transform in stage_query.iter_mut() {
             *transform = *root;
         }
     }
@@ -196,7 +344,57 @@ pub fn update_local_floor_transforms(
     }
 }
 
-pub fn create_input(actions: Res<XrActions>, mut cmds: Commands, session: Res<OxrSession>) {}
+pub fn create_input(actions: Res<XrActions>, mut cmds: Commands, session: Res<OxrSession>) {
+    let mut xr_input = XrInput {
+        float_state: HashMap::new(),
+        bool_state: HashMap::new(),
+        vec2_state: HashMap::new(),
+    };
+    println!("{:?}", actions.actions.len());
+    for action in actions.actions.iter() {
+        match action.1 {
+            XrRawActionState::Float(x) => {
+                if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
+                    xr_input.float_state.insert(
+                        action.0.clone(),
+                        XrActionStateFloat {
+                            previous_val: 0.0,
+                            cur_val: action_new.current_state,
+                            pressed: false,
+                        },
+                    );
+                    // .unwrap();
+                }
+            }
+            XrRawActionState::Bool(x) => {
+                if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
+                    xr_input.bool_state.insert(
+                        action.0.clone(),
+                        XrActionStateBool {
+                            previous_val: false,
+                            cur_val: action_new.current_state,
+                            pressed: false,
+                        },
+                    );
+                }
+            }
+            XrRawActionState::Vec2(x) => {
+                if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
+                    xr_input.vec2_state.insert(
+                        action.0.clone(),
+                        XrActionStateVec2 {
+                            previous_val: Vec2::ZERO,
+                            cur_val: action_new.current_state.to_vec2(),
+                        },
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+    println!("{:?}", xr_input);
+    cmds.insert_resource(xr_input);
+}
 
 pub fn sync_actions(actions: Res<XrActions>, mut sync: EventWriter<OxrSyncActionSet>) {
     sync.send(OxrSyncActionSet(actions.set.clone()));
@@ -208,9 +406,10 @@ pub fn attach_set(actions: Res<XrActions>, mut attach: EventWriter<OxrAttachActi
 
 pub fn suggest_action_bindings(
     actions: Res<XrActions>,
+    config: Res<Config>,
     mut bindings: EventWriter<OxrSuggestActionBinding>,
 ) {
-    for binding in actions.config.bindings.clone() {
+    for binding in config.bindings.clone() {
         match actions.actions.get(&binding.0).unwrap() {
             XrRawActionState::Float(x) => {
                 bindings.send(OxrSuggestActionBinding {
@@ -267,13 +466,15 @@ pub fn suggest_action_bindings(
         }
     }
 }
+pub fn create_actions(instance: Res<OxrInstance>, mut cmds: Commands, config: Res<Config>) {
+    cmds.insert_resource(XrActions::from_config(config.clone(), &instance));
+}
 
 impl XrActions {
     fn from_config(config: Config, instance: &OxrInstance) -> Self {
         let set = instance
             .create_action_set(config.set_name.as_str(), config.set_pretty_name.as_str(), 0)
             .unwrap();
-
         let mut actions = HashMap::new();
         for binding in config.bindings.clone() {
             match binding.0.action_type {
@@ -332,15 +533,11 @@ impl XrActions {
             }
         }
 
-        Self {
-            set,
-            actions,
-            config: config.clone(),
-        }
+        return Self { set, actions };
     }
 }
 
-#[derive(Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[derive(Deserialize, Serialize, Eq, PartialEq, Clone, Debug)]
 pub enum XrActionType {
     Float,
     Vec2,
@@ -348,12 +545,26 @@ pub enum XrActionType {
     Pose,
 }
 
-pub enum XrActionState {
-    Float(f32),
-    Vec2(Vec2),
-    Bool(bool),
-    Pose(Transform),
+#[derive(Debug, Default)]
+pub struct XrActionStateFloat {
+    pub previous_val: f32,
+    pub cur_val: f32,
+    pub pressed: bool,
 }
+
+#[derive(Debug, Default)]
+pub struct XrActionStateVec2 {
+    pub previous_val: Vec2,
+    pub cur_val: Vec2,
+}
+
+#[derive(Debug, Default)]
+pub struct XrActionStateBool {
+    pub previous_val: bool,
+    pub cur_val: bool,
+    pub pressed: bool,
+}
+pub struct XrActionStatePose(Transform);
 
 pub enum XrRawActionState {
     Float(openxr::Action<f32>),
