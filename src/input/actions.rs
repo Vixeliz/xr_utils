@@ -130,10 +130,7 @@ pub struct XrActions {
 
 #[derive(Resource, Debug)]
 pub struct XrInput {
-    pub float_state: HashMap<XrAction, XrActionStateFloat>,
-    pub bool_state: HashMap<XrAction, XrActionStateBool>,
-    pub vec2_state: HashMap<XrAction, XrActionStateVec2>,
-    // pub state: HashMap<XrAction, XrActionState>,
+    pub state: HashMap<XrAction, XrActionState>,
 }
 
 #[derive(Component)]
@@ -181,7 +178,7 @@ pub fn spawn_tracking_rig(actions: Res<XrActions>, mut cmds: Commands, session: 
 }
 
 pub fn update_inputs(
-    mut inputs: Option<ResMut<XrInput>>,
+    inputs: Option<ResMut<XrInput>>,
     actions: Option<Res<XrActions>>,
     session: Option<Res<OxrSession>>,
 ) {
@@ -193,9 +190,8 @@ pub fn update_inputs(
                         XrRawActionState::Float(x) => {
                             if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
                                 // println!("{:?}", action.0.clone());
-                                if let Some(prev_value) =
-                                    inputs.float_state.get_mut(&action.0.clone())
-                                {
+                                if let Some(prev_value) = inputs.state.get_mut(&action.0.clone()) {
+                                    let prev_value = prev_value.as_float_mut().unwrap();
                                     prev_value.pressed = prev_value.previous_val <= 0.0
                                         && action_new.current_state > 0.0;
                                     prev_value.cur_val = action_new.current_state;
@@ -204,9 +200,8 @@ pub fn update_inputs(
                         }
                         XrRawActionState::Bool(x) => {
                             if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
-                                if let Some(prev_value) =
-                                    inputs.bool_state.get_mut(&action.0.clone())
-                                {
+                                if let Some(prev_value) = inputs.state.get_mut(&action.0.clone()) {
+                                    let prev_value = prev_value.as_bool_mut().unwrap();
                                     prev_value.pressed =
                                         !prev_value.previous_val && action_new.current_state;
                                     prev_value.cur_val = action_new.current_state;
@@ -215,9 +210,8 @@ pub fn update_inputs(
                         }
                         XrRawActionState::Vec2(x) => {
                             if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
-                                if let Some(prev_value) =
-                                    inputs.vec2_state.get_mut(&action.0.clone())
-                                {
+                                if let Some(prev_value) = inputs.state.get_mut(&action.0.clone()) {
+                                    let prev_value = prev_value.as_vec2_mut().unwrap();
                                     prev_value.cur_val = action_new.current_state.to_vec2();
                                 }
                             }
@@ -230,43 +224,22 @@ pub fn update_inputs(
     }
 }
 
-pub fn end_frame_input(mut inputs: Option<ResMut<XrInput>>) {
+pub fn end_frame_input(inputs: Option<ResMut<XrInput>>) {
     if let Some(mut inputs) = inputs {
-        for float_input in inputs.float_state.iter_mut() {
-            float_input.1.previous_val = float_input.1.cur_val;
-        }
-        for bool_input in inputs.bool_state.iter_mut() {
-            bool_input.1.previous_val = bool_input.1.cur_val;
-        }
-        for vec2_input in inputs.vec2_state.iter_mut() {
-            vec2_input.1.previous_val = vec2_input.1.cur_val;
+        for input in inputs.state.iter_mut() {
+            match input.1 {
+                XrActionState::Float(x) => {
+                    x.previous_val = x.cur_val;
+                }
+                XrActionState::Bool(x) => {
+                    x.previous_val = x.cur_val;
+                }
+                XrActionState::Vec2(x) => {
+                    x.previous_val = x.cur_val;
+                }
+            }
         }
     }
-    // for mut input in inputs.state.iter_mut() {
-    //     match input.1 {
-    //         XrActionState::Float {
-    //             previous_val,
-    //             cur_val,
-    //             pressed,
-    //         } => {
-    //             previous_val = cur_val;
-    //         }
-    //         XrActionState::Bool {
-    //             previous_val,
-    //             cur_val,
-    //             pressed,
-    //         } => {
-    //             previous_val = cur_val;
-    //         }
-    //         XrActionState::Vec2 {
-    //             previous_val,
-    //             cur_val,
-    //         } => {
-    //             previous_val = cur_val;
-    //         }
-    //         _ => {}
-    //     }
-    // }
 }
 
 pub fn update_spaces(
@@ -275,23 +248,17 @@ pub fn update_spaces(
         (With<XrSpace>, Without<XrTrackedSpace>),
     >,
     mut tracked_space_query: Query<
-        (&mut Transform, &XrAction, &mut XrVelocity, Entity),
+        (&mut Transform, &XrAction, &mut XrVelocity),
         (With<XrTrackedSpace>, Without<XrSpace>),
     >,
-    mut cmds: Commands,
 ) {
     for (space_transform, space_action, space_velocity) in space_query.iter_mut() {
-        // if let Ok(space) = space_transform {
-        for (mut transform, action, mut velocity, entity) in tracked_space_query.iter_mut() {
+        for (mut transform, action, mut velocity) in tracked_space_query.iter_mut() {
             if action == space_action {
                 *transform = *space_transform;
                 *velocity = *space_velocity;
             }
-            // if action.is_none() {
-            // cmds.entity(entity).insert(space_action.clone());
-            // }
         }
-        // }
     }
 }
 
@@ -370,53 +337,50 @@ pub fn update_local_floor_transforms(
 
 pub fn create_input(actions: Res<XrActions>, mut cmds: Commands, session: Res<OxrSession>) {
     let mut xr_input = XrInput {
-        float_state: HashMap::new(),
-        bool_state: HashMap::new(),
-        vec2_state: HashMap::new(),
+        state: HashMap::new(),
     };
     println!("{:?}", actions.actions.len());
     for action in actions.actions.iter() {
         match action.1 {
             XrRawActionState::Float(x) => {
                 if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
-                    xr_input.float_state.insert(
+                    xr_input.state.insert(
                         action.0.clone(),
-                        XrActionStateFloat {
+                        XrActionState::Float(XrActionStateFloat {
                             previous_val: 0.0,
                             cur_val: action_new.current_state,
                             pressed: false,
-                        },
+                        }),
                     );
                     // .unwrap();
                 }
             }
             XrRawActionState::Bool(x) => {
                 if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
-                    xr_input.bool_state.insert(
+                    xr_input.state.insert(
                         action.0.clone(),
-                        XrActionStateBool {
+                        XrActionState::Bool(XrActionStateBool {
                             previous_val: false,
                             cur_val: action_new.current_state,
                             pressed: false,
-                        },
+                        }),
                     );
                 }
             }
             XrRawActionState::Vec2(x) => {
                 if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
-                    xr_input.vec2_state.insert(
+                    xr_input.state.insert(
                         action.0.clone(),
-                        XrActionStateVec2 {
+                        XrActionState::Vec2(XrActionStateVec2 {
                             previous_val: Vec2::ZERO,
                             cur_val: action_new.current_state.to_vec2(),
-                        },
+                        }),
                     );
                 }
             }
             _ => {}
         }
     }
-    println!("{:?}", xr_input);
     cmds.insert_resource(xr_input);
 }
 
@@ -569,26 +533,71 @@ pub enum XrActionType {
     Pose,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Copy)]
+pub enum XrActionState {
+    Float(XrActionStateFloat),
+    Bool(XrActionStateBool),
+    Vec2(XrActionStateVec2),
+}
+
+impl XrActionState {
+    pub fn as_float(&self) -> Option<&XrActionStateFloat> {
+        match self {
+            XrActionState::Float(x) => Some(x),
+            _ => None,
+        }
+    }
+    pub fn as_bool(&self) -> Option<&XrActionStateBool> {
+        match self {
+            XrActionState::Bool(x) => Some(x),
+            _ => None,
+        }
+    }
+    pub fn as_vec2(&self) -> Option<&XrActionStateVec2> {
+        match self {
+            XrActionState::Vec2(x) => Some(x),
+            _ => None,
+        }
+    }
+    pub fn as_float_mut(&mut self) -> Option<&mut XrActionStateFloat> {
+        match self {
+            XrActionState::Float(x) => Some(x),
+            _ => None,
+        }
+    }
+    pub fn as_bool_mut(&mut self) -> Option<&mut XrActionStateBool> {
+        match self {
+            XrActionState::Bool(x) => Some(x),
+            _ => None,
+        }
+    }
+    pub fn as_vec2_mut(&mut self) -> Option<&mut XrActionStateVec2> {
+        match self {
+            XrActionState::Vec2(x) => Some(x),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
 pub struct XrActionStateFloat {
     pub previous_val: f32,
     pub cur_val: f32,
     pub pressed: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct XrActionStateVec2 {
     pub previous_val: Vec2,
     pub cur_val: Vec2,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct XrActionStateBool {
     pub previous_val: bool,
     pub cur_val: bool,
     pub pressed: bool,
 }
-pub struct XrActionStatePose(Transform);
 
 pub enum XrRawActionState {
     Float(openxr::Action<f32>),

@@ -52,8 +52,10 @@ pub(crate) fn gravity_grabbing(
             let (action_name, action_type) = config.gravity_grab_action_names.first().unwrap();
             if let Some(input) = inputs {
                 let input = input
-                    .float_state
+                    .state
                     .get(&XrAction::from_string(action_name, action_type))
+                    .unwrap()
+                    .as_float()
                     .unwrap();
                 if input.cur_val > 0.0 {
                     // Pick object with hand vel
@@ -85,7 +87,6 @@ pub(crate) fn gesture(
         (
             &mut Velocity,
             &mut Transform,
-            &mut MeshMaterial3d<StandardMaterial>,
             // &Grabbable,
         ),
         (Without<Holding>, Without<XrTrackedSpace>, With<Grabbable>),
@@ -93,7 +94,6 @@ pub(crate) fn gesture(
     holding_query: Query<&Holding>,
     gravity_grabbing: Query<&GravityGrabbing>,
     rapier_context: Query<&RapierContext>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     config: Res<XrUtilsConfig>,
     inputs: Option<Res<XrInput>>,
 ) {
@@ -117,7 +117,7 @@ pub(crate) fn gesture(
             },
             QueryFilter::only_dynamic(),
         ) {
-            if let Ok((mut obj_velocity, transform, material)) = gravity_query.get_mut(hit.0) {
+            if let Ok((mut obj_velocity, transform)) = gravity_query.get_mut(hit.0) {
                 // if **grabbable {
                 let distance = hand_transform
                     .translation
@@ -128,8 +128,10 @@ pub(crate) fn gesture(
                     let (action_name, action_type) = config.grab_action_names.first().unwrap();
                     if let Some(input) = inputs {
                         let input = input
-                            .float_state
+                            .state
                             .get(&XrAction::from_string(action_name, action_type))
+                            .unwrap()
+                            .as_float()
                             .unwrap();
 
                         if input.pressed {

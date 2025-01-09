@@ -42,8 +42,10 @@ pub(crate) fn grab(
         let (action_name, action_type) = config.grab_action_names.first().unwrap();
         if let Some(input) = inputs {
             let input = input
-                .float_state
+                .state
                 .get(&XrAction::from_string(action_name, action_type))
+                .unwrap()
+                .as_float()
                 .unwrap();
             if let Ok((mut linear_vel, mut transform, global_transform, entity)) =
                 holding_query.get_single_mut()
