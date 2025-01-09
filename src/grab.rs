@@ -23,7 +23,7 @@ pub(crate) fn grab(
         (With<XrTrackedSpace>, Without<Holding>, Without<Grabbable>),
     >,
     mut holding_query: Query<
-        (&mut Velocity, &mut Transform, &Aabb, Entity),
+        (&mut Velocity, &mut Transform, &GlobalTransform, Entity),
         (With<Holding>, Without<XrTrackedSpace>),
     >,
     mut grabbable_query: Query<
@@ -45,16 +45,11 @@ pub(crate) fn grab(
                 .float_state
                 .get(&XrAction::from_string(action_name, action_type))
                 .unwrap();
-            if let Ok((mut linear_vel, mut transform, aabb, entity)) =
+            if let Ok((mut linear_vel, mut transform, global_transform, entity)) =
                 holding_query.get_single_mut()
             {
-                println!("{:?}", input.cur_val);
                 if input.cur_val <= 0.0 {
-                    let translation = hand_transform.translation
-                        - Vec3::new(aabb.half_extents.x, 0.0, aabb.half_extents.z)
-                        - Vec3::new(0.025, 0.0, 0.0);
-                    transform.translation = translation;
-                    transform.rotation = hand_transform.rotation;
+                    *transform = global_transform.compute_transform();
                     commands.entity(hand_entity).remove_children(&[entity]);
                     commands.entity(entity).remove::<Holding>();
                     commands.entity(entity).remove::<RigidBodyDisabled>();
