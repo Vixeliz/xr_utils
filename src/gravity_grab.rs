@@ -42,12 +42,13 @@ pub(crate) fn gravity_grabbing(
             Without<XrTrackedSpace>,
         ),
     >,
-    hand_query: Query<(&Transform, &XrVelocity), (With<XrTrackedSpace>, Without<Holding>)>,
+    hand_query: Query<(&GlobalTransform, &XrVelocity), (With<XrTrackedSpace>, Without<Holding>)>,
     mut commands: Commands,
     config: Res<XrUtilsConfig>,
     inputs: Option<Res<XrInput>>,
 ) {
-    if let Some((hand_transform, velocity)) = hand_query.iter().next() {
+    if let Some((hand_transform, velocity)) = hand_query.iter().last() {
+        let hand_transform = hand_transform.compute_transform();
         if let Ok((mut obj_velocity, obj_transform, entity)) = gravity_query.get_single_mut() {
             let (action_name, action_type) = config.gravity_grab_action_names.first().unwrap();
             if let Some(input) = inputs {
@@ -65,7 +66,7 @@ pub(crate) fn gravity_grabbing(
                     // If we move to fast gravity grab
                     let magnitude = obj_velocity.linvel.length();
                     if magnitude > threshold {
-                        let vel = compute_velocity(*hand_transform, *obj_transform);
+                        let vel = compute_velocity(hand_transform, *obj_transform);
                         obj_velocity.linvel = vel;
 
                         commands.entity(entity).remove::<GravityGrabbing>();
@@ -82,7 +83,7 @@ pub(crate) fn gravity_grabbing(
 // TODO: make some stuff like max distance a resource for the plugin config
 pub(crate) fn gesture(
     mut commands: Commands,
-    hand_query: Query<(&Transform, &XrVelocity), (With<XrTrackedSpace>, Without<Holding>)>,
+    hand_query: Query<(&GlobalTransform, &XrVelocity), (With<XrTrackedSpace>, Without<Holding>)>,
     mut gravity_query: Query<
         (
             &mut Velocity,
@@ -103,7 +104,8 @@ pub(crate) fn gesture(
     if gravity_grabbing.get_single().is_ok() {
         return;
     }
-    if let Some((hand_transform, velocity)) = hand_query.iter().next() {
+    if let Some((hand_transform, velocity)) = hand_query.iter().last() {
+        let hand_transform = hand_transform.compute_transform();
         if let Some(hit) = rapier_context.get_single().unwrap().cast_shape(
             hand_transform.translation,
             Quat::IDENTITY,

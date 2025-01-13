@@ -30,7 +30,7 @@ pub struct XrAction {
 
 // FIX: THIS IS JANK like all my code
 impl XrAction {
-    /// Does not make a proper action should only be used for getting items from xractions
+    /// Does not make a proper action should only be used for getting items from xractions mainly missing pretty name
     pub fn from_string(string: &String, action_type: &XrActionType) -> Self {
         Self {
             name: string.clone(),
@@ -91,6 +91,28 @@ impl Default for Config {
                     XrBinding {
                         interaction_profile: "/interaction_profiles/oculus/touch_controller".into(),
                         binding: vec!["/user/hand/left/input/grip/pose".into()],
+                    },
+                ),
+                (
+                    XrAction {
+                        name: "left_joystick".to_string(),
+                        pretty_name: "Left Hand JoyStick".to_string(),
+                        action_type: XrActionType::Vec2,
+                    },
+                    XrBinding {
+                        interaction_profile: "/interaction_profiles/oculus/touch_controller".into(),
+                        binding: vec!["/user/hand/left/input/thumbstick".into()],
+                    },
+                ),
+                (
+                    XrAction {
+                        name: "right_joystick".to_string(),
+                        pretty_name: "Right Hand JoyStick".to_string(),
+                        action_type: XrActionType::Vec2,
+                    },
+                    XrBinding {
+                        interaction_profile: "/interaction_profiles/oculus/touch_controller".into(),
+                        binding: vec!["/user/hand/right/input/thumbstick".into()],
                     },
                 ),
                 (
@@ -189,7 +211,6 @@ pub fn update_inputs(
                     match action.1 {
                         XrRawActionState::Float(x) => {
                             if let Ok(action_new) = x.state(&session, openxr::Path::NULL) {
-                                // println!("{:?}", action.0.clone());
                                 if let Some(prev_value) = inputs.state.get_mut(&action.0.clone()) {
                                     let prev_value = prev_value.as_float_mut().unwrap();
                                     prev_value.pressed = prev_value.previous_val <= 0.0
@@ -213,6 +234,10 @@ pub fn update_inputs(
                                 if let Some(prev_value) = inputs.state.get_mut(&action.0.clone()) {
                                     let prev_value = prev_value.as_vec2_mut().unwrap();
                                     prev_value.cur_val = action_new.current_state.to_vec2();
+                                    prev_value.pressed_x = prev_value.previous_val.x == 0.0
+                                        && action_new.current_state.x != 0.0;
+                                    prev_value.pressed_y = prev_value.previous_val.y == 0.0
+                                        && action_new.current_state.y != 0.0;
                                 }
                             }
                         }
@@ -339,7 +364,6 @@ pub fn create_input(actions: Res<XrActions>, mut cmds: Commands, session: Res<Ox
     let mut xr_input = XrInput {
         state: HashMap::new(),
     };
-    println!("{:?}", actions.actions.len());
     for action in actions.actions.iter() {
         match action.1 {
             XrRawActionState::Float(x) => {
@@ -374,6 +398,8 @@ pub fn create_input(actions: Res<XrActions>, mut cmds: Commands, session: Res<Ox
                         XrActionState::Vec2(XrActionStateVec2 {
                             previous_val: Vec2::ZERO,
                             cur_val: action_new.current_state.to_vec2(),
+                            pressed_x: false,
+                            pressed_y: false,
                         }),
                     );
                 }
@@ -590,6 +616,8 @@ pub struct XrActionStateFloat {
 pub struct XrActionStateVec2 {
     pub previous_val: Vec2,
     pub cur_val: Vec2,
+    pub pressed_x: bool,
+    pub pressed_y: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy)]

@@ -19,7 +19,7 @@ pub(crate) fn grab(
     mut commands: Commands,
     inputs: Option<Res<XrInput>>,
     hand_query: Query<
-        (&Transform, &XrVelocity, Entity),
+        (&GlobalTransform, &XrVelocity, Entity, &Collider),
         (With<XrTrackedSpace>, Without<Holding>, Without<Grabbable>),
     >,
     mut holding_query: Query<
@@ -38,7 +38,8 @@ pub(crate) fn grab(
     rapier_context: Query<&RapierContext>,
     config: Res<XrUtilsConfig>,
 ) {
-    if let Some((hand_transform, velocity, hand_entity)) = hand_query.iter().next() {
+    if let Some((hand_transform, velocity, hand_entity, hand_collider)) = hand_query.iter().last() {
+        let hand_transform = hand_transform.compute_transform();
         let (action_name, action_type) = config.grab_action_names.first().unwrap();
         if let Some(input) = inputs {
             let input = input
@@ -66,7 +67,7 @@ pub(crate) fn grab(
                 .intersection_with_shape(
                     hand_transform.translation,
                     hand_transform.rotation,
-                    &Collider::cuboid(0.1, 0.1, 0.05),
+                    &hand_collider,
                     QueryFilter::only_dynamic(),
                 )
                 .iter()
