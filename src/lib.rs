@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use input::{actions::XrActionType, OpenXRPlugin};
-use prelude::{handle_transform_events, SnapToPosition, SnapToRotation};
+use prelude::{handle_transform_events, SnapToPosition, SnapToRotation, XrAction};
 
 mod grab;
 mod gravity_grab;
@@ -20,21 +20,34 @@ pub mod prelude {
 
 #[derive(Resource)]
 pub struct XrUtilsConfig {
-    /// Only supports floats or bools
-    gravity_grab_action_names: Vec<(String, XrActionType)>,
-    /// Only supports floats or bools
-    grab_action_names: Vec<(String, XrActionType)>,
+    /// Only supports floats or bools also needs a pose
+    gravity_grab_action_names: Vec<(XrAction, XrAction)>,
+    /// Only supports floats or bools also needs a pose
+    grab_action_names: Vec<(XrAction, XrAction)>,
 }
 
 impl Default for XrUtilsConfig {
     fn default() -> Self {
         Self {
             gravity_grab_action_names: vec![
-                ("right_squeeze".to_string(), XrActionType::Float),
-                // ("left_squeeze".to_string(), XrActionType::Float),
+                (
+                    XrAction::from_string(&"right_squeeze".to_string(), &XrActionType::Float),
+                    XrAction::from_string(&"right_pose".to_string(), &XrActionType::Pose),
+                ),
+                (
+                    XrAction::from_string(&"left_squeeze".to_string(), &XrActionType::Float),
+                    XrAction::from_string(&"left_pose".to_string(), &XrActionType::Pose),
+                ), // ("left_squeeze".to_string(), XrActionType::Float),
             ],
             grab_action_names: vec![
-                ("right_squeeze".to_string(), XrActionType::Float),
+                (
+                    XrAction::from_string(&"right_squeeze".to_string(), &XrActionType::Float),
+                    XrAction::from_string(&"right_pose".to_string(), &XrActionType::Pose),
+                ),
+                (
+                    XrAction::from_string(&"left_squeeze".to_string(), &XrActionType::Float),
+                    XrAction::from_string(&"left_pose".to_string(), &XrActionType::Pose),
+                ),
                 // ("left_squeeze".to_string(), XrActionType::Float),
             ],
         }

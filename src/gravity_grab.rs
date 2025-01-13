@@ -50,14 +50,9 @@ pub(crate) fn gravity_grabbing(
     if let Some((hand_transform, velocity)) = hand_query.iter().last() {
         let hand_transform = hand_transform.compute_transform();
         if let Ok((mut obj_velocity, obj_transform, entity)) = gravity_query.get_single_mut() {
-            let (action_name, action_type) = config.gravity_grab_action_names.first().unwrap();
+            let (squeeze_action, pose_action) = config.gravity_grab_action_names.first().unwrap();
             if let Some(input) = inputs {
-                let input = input
-                    .state
-                    .get(&XrAction::from_string(action_name, action_type))
-                    .unwrap()
-                    .as_float()
-                    .unwrap();
+                let input = input.state.get(squeeze_action).unwrap().as_float().unwrap();
                 if input.cur_val > 0.0 {
                     // Pick object with hand vel
                     obj_velocity.linvel = velocity.linear;
@@ -127,14 +122,9 @@ pub(crate) fn gesture(
                 if distance <= 5.0 {
                     // So we can get whatever we are currently targetting
                     commands.entity(hit.0).insert(Targetting);
-                    let (action_name, action_type) = config.grab_action_names.first().unwrap();
+                    let (xr_action, pose_action) = config.grab_action_names.first().unwrap();
                     if let Some(input) = inputs {
-                        let input = input
-                            .state
-                            .get(&XrAction::from_string(action_name, action_type))
-                            .unwrap()
-                            .as_float()
-                            .unwrap();
+                        let input = input.state.get(xr_action).unwrap().as_float().unwrap();
 
                         if input.pressed {
                             obj_velocity.linvel.y = velocity.linear.y;

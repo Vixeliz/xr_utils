@@ -40,14 +40,9 @@ pub(crate) fn grab(
 ) {
     if let Some((hand_transform, velocity, hand_entity, hand_collider)) = hand_query.iter().last() {
         let hand_transform = hand_transform.compute_transform();
-        let (action_name, action_type) = config.grab_action_names.first().unwrap();
+        let (xr_action, pose_action) = config.grab_action_names.first().unwrap();
         if let Some(input) = inputs {
-            let input = input
-                .state
-                .get(&XrAction::from_string(action_name, action_type))
-                .unwrap()
-                .as_float()
-                .unwrap();
+            let input = input.state.get(xr_action).unwrap().as_float().unwrap();
             if let Ok((mut linear_vel, mut transform, global_transform, entity)) =
                 holding_query.get_single_mut()
             {
